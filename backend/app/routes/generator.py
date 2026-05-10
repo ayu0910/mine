@@ -1,14 +1,16 @@
 import json
+import logging
 import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAIError
 
 from app.prompts import REACT_SYSTEM_PROMPT, SYSTEM_PROMPT
 from app.schemas import GeneratedFile, GenerateRequest, GenerateResponse
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_client() -> AsyncOpenAI:
@@ -38,19 +40,23 @@ async def generate_website_stream(req: GenerateRequest):
     client = get_client()
 
     async def stream():
-        response = await client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": req.prompt},
-            ],
-            stream=True,
-            max_tokens=16000,
-            temperature=0.7,
-        )
-        async for chunk in response:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        try:
+            response = await client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": req.prompt},
+                ],
+                stream=True,
+                max_tokens=16000,
+                temperature=0.7,
+            )
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except OpenAIError as e:
+            logger.error("OpenAI API error during streaming: %s", e)
+            yield f"\n<!-- STREAM_ERROR: {e} -->\n"
 
     return StreamingResponse(stream(), media_type="text/plain")
 

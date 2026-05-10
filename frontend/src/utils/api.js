@@ -39,5 +39,15 @@ export async function generateWebsiteStream(prompt, framework = 'html', onChunk)
     onChunk(result);
   }
 
+  if (!result.trim()) {
+    throw new Error('No content was generated. The AI returned an empty response.');
+  }
+
+  if (result.includes('<!-- STREAM_ERROR:')) {
+    const match = result.match(/<!-- STREAM_ERROR: (.*?) -->/);
+    const errorMsg = match ? match[1] : 'An error occurred during generation';
+    throw new Error(errorMsg);
+  }
+
   return result;
 }
